@@ -17,3 +17,10 @@ os usuários;
 - Deve possibilitar comunicação fechada entre dois usuários;
 - Deve possibilitar gerar automaticamente um grande volume de dados para realizar
 testes de desempenho
+
+## Para Rodar
+```
+sudo apt-get install libgtk-3-dev
+make
+make run
+```
