@@ -3,275 +3,335 @@
 #include <stdio.h>
 #include <string.h>
 
-// Widgets globais
-static GtkWidget *main_window;
-static GtkWidget *text_view;
-static GtkWidget *log_text_view;
-static GtkTextBuffer *text_buffer;
-static GtkTextBuffer *log_buffer;
-static GtkWidget *chat_window = NULL;
+#include <gtk/gtk.h>
+#include <stdio.h>
+#include <mpi.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Estrutura para armazenar os widgets
+typedef struct
+{
+    GtkWidget *janela_principal;
+    GtkWidget *botao_inserir_texto;
+    GtkWidget *botao_selecionar_linha;
+    GtkWidget *input_linha_selecionada;
+    GtkWidget *input_conteudo_linha;
+    GtkWidget *botao_enviar_chat;
+    GtkWidget *combo_usuario_chat;
+    GtkWidget *input_conteudo_linha1;
+    GtkTextView *textarea_logs;
+    GtkTextBuffer *buffer_logs;
+} AppWidgets;
+
 static int my_rank, num_procs;
 
+// Array para simular linhas de texto
+static char linhas_texto[100][256];
+static int total_linhas = 0;
+
 // Função para adicionar log
-static void add_log(const char *message) {
-    GtkTextIter end_iter;
-    char timestamp_msg[512];
-    
-    // Adiciona timestamp simples
-    snprintf(timestamp_msg, sizeof(timestamp_msg), "[Processo %d] %s\n", my_rank, message);
-    
-    gtk_text_buffer_get_end_iter(log_buffer, &end_iter);
-    gtk_text_buffer_insert(log_buffer, &end_iter, timestamp_msg, -1);
-    
+void adicionar_log(AppWidgets *app, const char *mensagem)
+{
+    GtkTextIter iter;
+    gtk_text_buffer_get_end_iter(app->buffer_logs, &iter);
+
+    // Adicionar timestamp
+    char log_completo[512];
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    snprintf(log_completo, sizeof(log_completo),
+             "[%02d:%02d:%02d] %s\n",
+             tm.tm_hour, tm.tm_min, tm.tm_sec, mensagem);
+
+    gtk_text_buffer_insert(app->buffer_logs, &iter, log_completo, -1);
+
     // Auto-scroll para o final
-    GtkTextMark *mark = gtk_text_buffer_get_insert(log_buffer);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(log_text_view), mark);
+    GtkTextMark *mark = gtk_text_buffer_get_insert(app->buffer_logs);
+    gtk_text_view_scroll_mark_onscreen(app->textarea_logs, mark);
 }
 
-// Função chamada quando a janela principal é fechada
-static void on_main_window_destroy() {
-    if (chat_window) {
-        gtk_widget_destroy(chat_window);
+// Callback para o botão "Inserir Texto"
+void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data)
+{
+    AppWidgets *app = (AppWidgets *)user_data;
+
+    const char *conteudo = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha));
+
+    if (strlen(conteudo) > 0)
+    {
+        strcpy(linhas_texto[total_linhas], conteudo);
+        total_linhas++;
+
+        char log_msg[300];
+        snprintf(log_msg, sizeof(log_msg),
+                 "Texto inserido na linha %d: '%s'", total_linhas, conteudo);
+        adicionar_log(app, log_msg);
+
+        // Limpar o campo de entrada
+        gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), "");
+
+        // Mostrar mensagem de sucesso
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->janela_principal),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO,
+            GTK_BUTTONS_OK,
+            "Texto inserido com sucesso na linha %d!", total_linhas);
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
     }
+    else
+    {
+        adicionar_log(app, "Erro: Conteúdo vazio não pode ser inserido");
+
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->janela_principal),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_OK,
+            "Por favor, insira algum conteúdo!");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+}
+
+// Callback para o botão "Selecionar Linha"
+void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
+{
+    AppWidgets *app = (AppWidgets *)user_data;
+
+    const char *linha_str = gtk_entry_get_text(GTK_ENTRY(app->input_linha_selecionada));
+
+    if (strlen(linha_str) > 0)
+    {
+        int linha_num = atoi(linha_str);
+
+        if (linha_num > 0 && linha_num <= total_linhas)
+        {
+            // Mostrar o conteúdo da linha selecionada
+            gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha),
+                               linhas_texto[linha_num - 1]);
+
+            char log_msg[300];
+            snprintf(log_msg, sizeof(log_msg),
+                     "Linha %d selecionada: '%s'", linha_num, linhas_texto[linha_num - 1]);
+            adicionar_log(app, log_msg);
+
+            GtkWidget *dialog = gtk_message_dialog_new(
+                GTK_WINDOW(app->janela_principal),
+                GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_INFO,
+                GTK_BUTTONS_OK,
+                "Linha %d carregada para edição:\n'%s'",
+                linha_num, linhas_texto[linha_num - 1]);
+            gtk_dialog_run(GTK_DIALOG(dialog));
+            gtk_widget_destroy(dialog);
+        }
+        else
+        {
+            adicionar_log(app, "Erro: Número de linha inválido");
+
+            GtkWidget *dialog = gtk_message_dialog_new(
+                GTK_WINDOW(app->janela_principal),
+                GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_WARNING,
+                GTK_BUTTONS_OK,
+                "Linha inválida! Use um número entre 1 e %d", total_linhas);
+            gtk_dialog_run(GTK_DIALOG(dialog));
+            gtk_widget_destroy(dialog);
+        }
+    }
+    else
+    {
+        adicionar_log(app, "Erro: Número da linha não informado");
+
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->janela_principal),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_OK,
+            "Por favor, informe o número da linha!");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+}
+
+// Callback para o botão "Enviar Chat"
+void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
+{
+    AppWidgets *app = (AppWidgets *)user_data;
+
+    const char *mensagem_chat = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha1));
+
+    // Obter usuário selecionado no combo
+    gchar *usuario_ativo = gtk_combo_box_text_get_active_text(
+        GTK_COMBO_BOX_TEXT(app->combo_usuario_chat));
+
+    if (strlen(mensagem_chat) > 0)
+    {
+        char log_msg[400];
+        if (usuario_ativo)
+        {
+            snprintf(log_msg, sizeof(log_msg),
+                     "Chat enviado por %s: '%s'", usuario_ativo, mensagem_chat);
+        }
+        else
+        {
+            snprintf(log_msg, sizeof(log_msg),
+                     "Chat enviado: '%s'", mensagem_chat);
+        }
+        adicionar_log(app, log_msg);
+
+        // Limpar o campo de mensagem
+        gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha1), "");
+
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->janela_principal),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO,
+            GTK_BUTTONS_OK,
+            "Mensagem de chat enviada com sucesso!");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+    else
+    {
+        adicionar_log(app, "Erro: Mensagem de chat vazia");
+
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->janela_principal),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_OK,
+            "Por favor, digite uma mensagem!");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+
+    if (usuario_ativo)
+    {
+        g_free(usuario_ativo);
+    }
+}
+
+// Callback para fechar a aplicação
+void on_janela_principal_destroy(GtkWidget *widget, gpointer user_data)
+{
     gtk_main_quit();
 }
 
-// Função para o botão "Alterar Texto"
-static void on_alter_text_clicked(GtkWidget *widget, gpointer data) {
-    add_log("Botão 'Alterar Texto' clicado");
-    
-    // Obtém o texto atual
-    GtkTextIter start, end;
-    gtk_text_buffer_get_bounds(text_buffer, &start, &end);
-    char *current_text = gtk_text_buffer_get_text(text_buffer, &start, &end, FALSE);
-    
-    // Adiciona texto de exemplo ou modifica o existente
-    char new_text[1024];
-    if (strlen(current_text) == 0) {
-        snprintf(new_text, sizeof(new_text), "Texto alterado pelo processo %d\nHorário: %ld", my_rank, time(NULL));
-    } else {
-        snprintf(new_text, sizeof(new_text), "%s\n[Modificado pelo processo %d]", current_text, my_rank);
-    }
-    
-    gtk_text_buffer_set_text(text_buffer, new_text, -1);
-    g_free(current_text);
-    
-    add_log("Texto alterado com sucesso");
-}
+// Função para configurar o combo box de usuários
+void configurar_combo_usuarios(AppWidgets *app)
+{
+    // Criar um ListStore para o combo box
+    GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
+    GtkTreeIter iter;
 
-// Função chamada quando a janela de chat é fechada
-static void on_chat_window_destroy() {
-    chat_window = NULL;
-    add_log("Janela de chat fechada");
-}
+    // Adicionar usuários ao store
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, "Usuario1", -1);
 
-// Função para enviar mensagem no chat
-static void on_send_message_clicked(GtkWidget *widget, gpointer user_data) {
-    GtkWidget **chat_widgets = (GtkWidget **)user_data;
-    GtkWidget *user_entry = chat_widgets[0];
-    GtkWidget *message_entry = chat_widgets[1];
-    GtkWidget *chat_display = chat_widgets[2];
-    
-    const char *user_text = gtk_entry_get_text(GTK_ENTRY(user_entry));
-    const char *message_text = gtk_entry_get_text(GTK_ENTRY(message_entry));
-    
-    if (strlen(user_text) == 0 || strlen(message_text) == 0) {
-        add_log("Erro: Usuário e mensagem devem ser preenchidos");
-        return;
-    }
-    
-    // Adiciona mensagem ao display do chat
-    GtkTextBuffer *chat_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(chat_display));
-    GtkTextIter end_iter;
-    gtk_text_buffer_get_end_iter(chat_buffer, &end_iter);
-    
-    char chat_message[512];
-    snprintf(chat_message, sizeof(chat_message), "Para %s: %s\n", user_text, message_text);
-    gtk_text_buffer_insert(chat_buffer, &end_iter, chat_message, -1);
-    
-    // Limpa os campos de entrada
-    gtk_entry_set_text(GTK_ENTRY(message_entry), "");
-    
-    // Log da ação
-    char log_message[512];
-    snprintf(log_message, sizeof(log_message), "Mensagem enviada para %s: %s", user_text, message_text);
-    add_log(log_message);
-    
-    // Aqui você pode adicionar lógica MPI para enviar a mensagem real
-    // Exemplo de comunicação MPI (comentado para não interferir):
-    /*
-    int target_rank = atoi(user_text);
-    if (target_rank >= 0 && target_rank < num_procs && target_rank != my_rank) {
-        MPI_Send((void*)message_text, strlen(message_text)+1, MPI_CHAR, target_rank, 0, MPI_COMM_WORLD);
-    }
-    */
-}
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, "Usuario2", -1);
 
-// Função para o botão "Chat"
-static void on_chat_clicked(GtkWidget *widget, gpointer data) {
-    add_log("Abrindo janela de chat");
-    
-    // Se a janela já existe, apenas a traz para frente
-    if (chat_window) {
-        gtk_window_present(GTK_WINDOW(chat_window));
-        return;
-    }
-    
-    // Cria nova janela de chat
-    chat_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(chat_window), "Chat - Interface de Mensagens");
-    gtk_window_set_default_size(GTK_WINDOW(chat_window), 500, 400);
-    gtk_window_set_transient_for(GTK_WINDOW(chat_window), GTK_WINDOW(main_window));
-    
-    // Container principal do chat
-    GtkWidget *chat_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_container_set_border_width(GTK_CONTAINER(chat_vbox), 10);
-    gtk_container_add(GTK_CONTAINER(chat_window), chat_vbox);
-    
-    // Área de exibição do chat
-    GtkWidget *chat_display = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_display), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_display), GTK_WRAP_WORD);
-    
-    GtkWidget *chat_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(chat_scroll), 
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_container_add(GTK_CONTAINER(chat_scroll), chat_display);
-    gtk_widget_set_size_request(chat_scroll, -1, 200);
-    
-    // Campos de entrada
-    GtkWidget *input_grid = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(input_grid), 5);
-    gtk_grid_set_column_spacing(GTK_GRID(input_grid), 5);
-    
-    // Campo para usuário destino
-    GtkWidget *user_label = gtk_label_new("Usuário (Rank):");
-    gtk_widget_set_halign(user_label, GTK_ALIGN_START);
-    GtkWidget *user_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(user_entry), "Digite o rank do usuário (0, 1, 2...)");
-    
-    // Campo para mensagem
-    GtkWidget *message_label = gtk_label_new("Mensagem:");
-    gtk_widget_set_halign(message_label, GTK_ALIGN_START);
-    GtkWidget *message_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(message_entry), "Digite sua mensagem aqui...");
-    
-    // Botão enviar
-    GtkWidget *send_button = gtk_button_new_with_label("Enviar Mensagem");
-    
-    // Array para passar múltiplos widgets para o callback
-    static GtkWidget *chat_widgets[3];
-    chat_widgets[0] = user_entry;
-    chat_widgets[1] = message_entry;
-    chat_widgets[2] = chat_display;
-    
-    // Organiza o grid
-    gtk_grid_attach(GTK_GRID(input_grid), user_label, 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(input_grid), user_entry, 1, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(input_grid), message_label, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(input_grid), message_entry, 1, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(input_grid), send_button, 0, 2, 2, 1);
-    
-    // Adiciona widgets ao container principal
-    gtk_box_pack_start(GTK_BOX(chat_vbox), gtk_label_new("Histórico do Chat:"), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(chat_vbox), chat_scroll, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(chat_vbox), input_grid, FALSE, FALSE, 0);
-    
-    // Conecta sinais
-    g_signal_connect(chat_window, "destroy", G_CALLBACK(on_chat_window_destroy), NULL);
-    g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_message_clicked), chat_widgets);
-    
-    // Permite enviar com Enter no campo de mensagem
-    g_signal_connect(message_entry, "activate", G_CALLBACK(on_send_message_clicked), chat_widgets);
-    
-    // Mostra a janela
-    gtk_widget_show_all(chat_window);
-}
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, "Usuario3", -1);
 
-int main(int argc, char *argv[]) {
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, "Admin", -1);
+
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, "Convidado", -1);
+
+    // Configurar o modelo do combo box
+    gtk_combo_box_set_model(GTK_COMBO_BOX(app->combo_usuario_chat), GTK_TREE_MODEL(store));
+
+    // Criar um cell renderer para exibir o texto
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(app->combo_usuario_chat), renderer, TRUE);
+    gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(app->combo_usuario_chat), renderer, "text", 0, NULL);
+
+    // Selecionar o primeiro item por padrão
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->combo_usuario_chat), 0);
+
+    // Liberar referência do store
+    g_object_unref(store);
+}
+int main(int argc, char *argv[])
+{
     // Inicializa MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-    
-    // Inicializa o GTK
+    char titulo_janela_principal[100];
+    snprintf(titulo_janela_principal, sizeof(titulo_janela_principal), "Editor de Texto PPD - Processo %d", my_rank);
+
+    GtkBuilder *builder;
+    AppWidgets *app;
+    GError *error = NULL;
+
+    // Inicializar GTK
     gtk_init(&argc, &argv);
-    
-    // Cria janela principal
-    main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    char title[100];
-    snprintf(title, sizeof(title), "Interface MPI+GTK - Processo %d", my_rank);
-    gtk_window_set_title(GTK_WINDOW(main_window), title);
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 600, 500);
-    gtk_window_set_position(GTK_WINDOW(main_window), GTK_WIN_POS_CENTER);
-    
-    // Container principal
-    GtkWidget *main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    gtk_container_add(GTK_CONTAINER(main_window), main_vbox);
-    
-    // === BARRA SUPERIOR COM BOTÕES ===
-    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_container_set_border_width(GTK_CONTAINER(button_box), 10);
-    
-    GtkWidget *alter_text_button = gtk_button_new_with_label("Alterar Texto");
-    GtkWidget *chat_button = gtk_button_new_with_label("Chat");
-    
-    gtk_box_pack_start(GTK_BOX(button_box), alter_text_button, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(button_box), chat_button, FALSE, FALSE, 0);
-    
-    // === ÁREA DE TEXTO PRINCIPAL (BODY) ===
-    GtkWidget *text_frame = gtk_frame_new("Área de Texto Principal");
-    text_view = gtk_text_view_new();
-    text_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD);
-    
-    GtkWidget *text_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(text_scroll), 
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_container_add(GTK_CONTAINER(text_scroll), text_view);
-    gtk_container_add(GTK_CONTAINER(text_frame), text_scroll);
-    
-    // === ÁREA DE LOGS (INFERIOR) ===
-    GtkWidget *log_frame = gtk_frame_new("Logs do Sistema");
-    log_text_view = gtk_text_view_new();
-    log_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(log_text_view));
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(log_text_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_text_view), GTK_WRAP_WORD);
-    
-    GtkWidget *log_scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(log_scroll), 
-                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-    gtk_container_add(GTK_CONTAINER(log_scroll), log_text_view);
-    gtk_container_add(GTK_CONTAINER(log_frame), log_scroll);
-    
-    // Define altura mínima para os componentes
-    gtk_widget_set_size_request(text_scroll, -1, 200);
-    gtk_widget_set_size_request(log_scroll, -1, 100);
-    
-    // Adiciona tudo ao container principal
-    gtk_box_pack_start(GTK_BOX(main_vbox), button_box, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(main_vbox), text_frame, TRUE, TRUE, 5);
-    gtk_box_pack_start(GTK_BOX(main_vbox), log_frame, FALSE, TRUE, 5);
-    
-    // Conecta sinais
-    g_signal_connect(main_window, "destroy", G_CALLBACK(on_main_window_destroy), NULL);
-    g_signal_connect(alter_text_button, "clicked", G_CALLBACK(on_alter_text_clicked), NULL);
-    g_signal_connect(chat_button, "clicked", G_CALLBACK(on_chat_clicked), NULL);
-    
-    // Mostra todos os widgets
-    gtk_widget_show_all(main_window);
-    
-    // Adiciona log inicial
-    add_log("Aplicação iniciada");
-    char init_msg[256];
-    snprintf(init_msg, sizeof(init_msg), "Processo %d de %d processos", my_rank, num_procs);
-    add_log(init_msg);
-    
-    // Inicia o loop principal do GTK
+
+    // Alocar memória para a estrutura de widgets
+    app = g_malloc(sizeof(AppWidgets));
+
+    // Criar builder e carregar o arquivo .glade
+    builder = gtk_builder_new();
+    if (!gtk_builder_add_from_file(builder, "glade_layout.glade", &error))
+    {
+        g_printerr("Erro ao carregar arquivo .glade: %s\n", error->message);
+        g_error_free(error);
+        return 1;
+    }
+
+    // Obter widgets do builder
+    app->janela_principal = GTK_WIDGET(gtk_builder_get_object(builder, "janela_principal"));
+    app->botao_inserir_texto = GTK_WIDGET(gtk_builder_get_object(builder, "botao_inserir_texto"));
+    app->botao_selecionar_linha = GTK_WIDGET(gtk_builder_get_object(builder, "botao_selecionar_linha"));
+    app->input_linha_selecionada = GTK_WIDGET(gtk_builder_get_object(builder, "input_linha_selecionada"));
+    app->input_conteudo_linha = GTK_WIDGET(gtk_builder_get_object(builder, "input_conteudo_linha"));
+    app->botao_enviar_chat = GTK_WIDGET(gtk_builder_get_object(builder, "botao_enviar_chat"));
+    app->combo_usuario_chat = GTK_WIDGET(gtk_builder_get_object(builder, "combo_usuario_chat"));
+    app->input_conteudo_linha1 = GTK_WIDGET(gtk_builder_get_object(builder, "input_conteudo_linha1"));
+    app->textarea_logs = GTK_TEXT_VIEW(gtk_builder_get_object(builder, "textarea_logs"));
+
+    gtk_window_set_title(GTK_WINDOW(app->janela_principal), titulo_janela_principal);
+
+    // Configurar o buffer de texto para logs
+    app->buffer_logs = gtk_text_view_get_buffer(app->textarea_logs);
+
+    // Conectar sinais aos callbacks
+    g_signal_connect(app->janela_principal, "destroy",
+                     G_CALLBACK(on_janela_principal_destroy), NULL);
+    g_signal_connect(app->botao_inserir_texto, "clicked",
+                     G_CALLBACK(on_botao_inserir_texto_clicked), app);
+    g_signal_connect(app->botao_selecionar_linha, "clicked",
+                     G_CALLBACK(on_botao_selecionar_linha_clicked), app);
+    g_signal_connect(app->botao_enviar_chat, "clicked",
+                     G_CALLBACK(on_botao_enviar_chat_clicked), app);
+
+    // Configurar combo box de usuários
+    configurar_combo_usuarios(app);
+
+    // Adicionar log inicial
+    adicionar_log(app, "Editor inicializado com sucesso");
+
+    // Liberar o builder
+    g_object_unref(builder);
+
+    // Mostrar a janela principal
+    gtk_widget_show_all(app->janela_principal);
+
+    // Iniciar o loop principal do GTK
     gtk_main();
-    
+
+    // Liberar memória
+    g_free(app);
+
     // Finaliza MPI
     MPI_Finalize();
-    
+
     return 0;
 }

@@ -17,6 +17,17 @@ LIBS = `pkg-config --libs gtk+-3.0` -pthread
 $(TARGET): $(SRC)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LIBS)
 
+# Instalar dependências (Ubuntu/Debian)
+install:
+	sudo apt-get update
+	sudo apt-get install build-essential libgtk-3-dev pkg-config glade
+
+# Verificar se as dependências estão instaladas
+check:
+	@echo "Verificando dependências..."
+	@pkg-config --exists gtk+-3.0 && echo "GTK+ 3.0: OK" || echo "GTK+ 3.0: FALTANDO"
+	@which glade > /dev/null && echo "Glade: OK" || echo "Glade: FALTANDO"
+
 # Regra para limpar arquivos compilados
 clean:
 	rm -f $(TARGET)

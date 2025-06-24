@@ -20,7 +20,7 @@ testes de desempenho
 
 ## Para Rodar
 ```
-sudo apt-get install libgtk-3-dev
-make
-make run
+make install # Intalar dependências
+make         # Compilar  
+make run     # Executar
 ```
