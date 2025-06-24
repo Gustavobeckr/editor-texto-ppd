@@ -2,6 +2,8 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 // Estrutura para armazenar os widgets
 typedef struct
@@ -43,6 +45,25 @@ void adicionar_log(AppWidgets *app, const char *mensagem)
     // Auto-scroll para o final
     GtkTextMark *mark = gtk_text_buffer_get_insert(app->buffer_logs);
     gtk_text_view_scroll_mark_onscreen(app->textarea_logs, mark);
+}
+
+// Função para obter o texto selecionado do combo box
+gchar *obter_usuario_selecionado(GtkComboBox *combo)
+{
+    GtkTreeIter iter;
+    GtkTreeModel *model;
+    gchar *usuario = NULL;
+
+    if (gtk_combo_box_get_active_iter(combo, &iter))
+    {
+        model = gtk_combo_box_get_model(combo);
+        if (model)
+        {
+            gtk_tree_model_get(model, &iter, 0, &usuario, -1);
+        }
+    }
+
+    return usuario;
 }
 
 // Callback para o botão "Inserir Texto"
@@ -159,13 +180,12 @@ void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
     const char *mensagem_chat = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha1));
 
     // Obter usuário selecionado no combo
-    gchar *usuario_ativo = gtk_combo_box_text_get_active_text(
-        GTK_COMBO_BOX_TEXT(app->combo_usuario_chat));
+    gchar *usuario_ativo = obter_usuario_selecionado(GTK_COMBO_BOX(app->combo_usuario_chat));
 
     if (strlen(mensagem_chat) > 0)
     {
         char log_msg[400];
-        if (usuario_ativo)
+        if (usuario_ativo && strlen(usuario_ativo) > 0)
         {
             snprintf(log_msg, sizeof(log_msg),
                      "Chat enviado por %s: '%s'", usuario_ativo, mensagem_chat);
@@ -223,20 +243,14 @@ void configurar_combo_usuarios(AppWidgets *app)
     GtkTreeIter iter;
 
     // Adicionar usuários ao store
-    gtk_list_store_append(store, &iter);
-    gtk_list_store_set(store, &iter, 0, "Usuario1", -1);
+    const char *usuarios[] = {"Usuario1", "Usuario2", "Usuario3", "Admin", "Convidado"};
+    int num_usuarios = sizeof(usuarios) / sizeof(usuarios[0]);
 
-    gtk_list_store_append(store, &iter);
-    gtk_list_store_set(store, &iter, 0, "Usuario2", -1);
-
-    gtk_list_store_append(store, &iter);
-    gtk_list_store_set(store, &iter, 0, "Usuario3", -1);
-
-    gtk_list_store_append(store, &iter);
-    gtk_list_store_set(store, &iter, 0, "Admin", -1);
-
-    gtk_list_store_append(store, &iter);
-    gtk_list_store_set(store, &iter, 0, "Convidado", -1);
+    for (int i = 0; i < num_usuarios; i++)
+    {
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, 0, usuarios[i], -1);
+    }
 
     // Configurar o modelo do combo box
     gtk_combo_box_set_model(GTK_COMBO_BOX(app->combo_usuario_chat), GTK_TREE_MODEL(store));
@@ -252,6 +266,7 @@ void configurar_combo_usuarios(AppWidgets *app)
     // Liberar referência do store
     g_object_unref(store);
 }
+
 int main(int argc, char *argv[])
 {
     // Inicializa MPI
