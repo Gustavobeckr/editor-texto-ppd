@@ -3,12 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <gtk/gtk.h>
-#include <stdio.h>
-#include <mpi.h>
-#include <stdlib.h>
-#include <string.h>
-
 // Estrutura para armazenar os widgets
 typedef struct
 {
