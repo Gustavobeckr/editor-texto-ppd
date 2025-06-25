@@ -9,6 +9,9 @@
 #define TAMANHO_LINHA 128
 #define NOME_ARQUIVO_TXT "EditorTexto.txt"
 
+void escrever_na_linha(int linha_alvo, const char *nova_linha);
+void ler_linha(int numero_linha);
+
 // Estrutura para armazenar os widgets
 typedef struct
 {
@@ -79,7 +82,9 @@ void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data)
 
     if (strlen(conteudo) > 0)
     {
-        strcpy(linhas_texto[MAXIMO_LINHAS], conteudo);
+        if (linha_selecionada >= 1 && linha_selecionada <= MAXIMO_LINHAS) {
+          strcpy(linhas_texto[linha_selecionada - 1], conteudo);
+        }
         escrever_na_linha(linha_selecionada, conteudo);
 
         char log_msg[300];
@@ -129,10 +134,10 @@ void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
         if (linha_num > 0 && linha_num <= MAXIMO_LINHAS)
         {
             // Mostrar o conteúdo da linha selecionada
-            gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha),
-                               linhas_texto[linha_num - 1]);
+          ler_linha(linha_num);
+          gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), conteudo_linha_selecionada);
+          linha_selecionada = linha_num;
 
-            linha_selecionada = (int)linha_num;
 
             char log_msg[300];
             snprintf(log_msg, sizeof(log_msg),
@@ -359,8 +364,9 @@ void ler_linha(int numero_linha)
         {
             if (strlen(linha) > 0)
             {
-                printf("Linha:  %s", linha);
                 strcpy(conteudo_linha_selecionada, linha);
+                conteudo_linha_selecionada[strcspn(conteudo_linha_selecionada, "\n")] = '\0';  // remove o \n
+
             }
             else
             {
