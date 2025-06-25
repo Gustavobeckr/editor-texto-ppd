@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+#define MAXIMO_LINHAS 100
+#define TAMANHO_LINHA 128
+#define NOME_ARQUIVO_TXT "EditorTexto.txt"
+
 // Estrutura para armazenar os widgets
 typedef struct
 {
@@ -20,11 +24,11 @@ typedef struct
     GtkTextBuffer *buffer_logs;
 } AppWidgets;
 
-static int my_rank, num_procs;
+static int my_rank, num_procs, linha_selecionada;
+static char conteudo_linha_selecionada[TAMANHO_LINHA];
 
 // Array para simular linhas de texto
-static char linhas_texto[100][256];
-static int total_linhas = 0;
+static char linhas_texto[MAXIMO_LINHAS][TAMANHO_LINHA];
 
 // Função para adicionar log
 void adicionar_log(AppWidgets *app, const char *mensagem)
@@ -75,12 +79,12 @@ void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data)
 
     if (strlen(conteudo) > 0)
     {
-        strcpy(linhas_texto[total_linhas], conteudo);
-        total_linhas++;
+        strcpy(linhas_texto[MAXIMO_LINHAS], conteudo);
+        escrever_na_linha(linha_selecionada, conteudo);
 
         char log_msg[300];
         snprintf(log_msg, sizeof(log_msg),
-                 "Texto inserido na linha %d: '%s'", total_linhas, conteudo);
+                 "Texto inserido na linha %d: '%s'", linha_selecionada, conteudo);
         adicionar_log(app, log_msg);
 
         // Limpar o campo de entrada
@@ -92,7 +96,7 @@ void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data)
             GTK_DIALOG_DESTROY_WITH_PARENT,
             GTK_MESSAGE_INFO,
             GTK_BUTTONS_OK,
-            "Texto inserido com sucesso na linha %d!", total_linhas);
+            "Texto inserido com sucesso na linha %d!", linha_selecionada);
         gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
     }
@@ -122,16 +126,20 @@ void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
     {
         int linha_num = atoi(linha_str);
 
-        if (linha_num > 0 && linha_num <= total_linhas)
+        if (linha_num > 0 && linha_num <= MAXIMO_LINHAS)
         {
             // Mostrar o conteúdo da linha selecionada
             gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha),
                                linhas_texto[linha_num - 1]);
 
+            linha_selecionada = (int)linha_num;
+
             char log_msg[300];
             snprintf(log_msg, sizeof(log_msg),
                      "Linha %d selecionada: '%s'", linha_num, linhas_texto[linha_num - 1]);
             adicionar_log(app, log_msg);
+
+            ler_linha(linha_num);
 
             GtkWidget *dialog = gtk_message_dialog_new(
                 GTK_WINDOW(app->janela_principal),
@@ -139,7 +147,7 @@ void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
                 GTK_MESSAGE_INFO,
                 GTK_BUTTONS_OK,
                 "Linha %d carregada para edição:\n'%s'",
-                linha_num, linhas_texto[linha_num - 1]);
+                linha_num, conteudo_linha_selecionada);
             gtk_dialog_run(GTK_DIALOG(dialog));
             gtk_widget_destroy(dialog);
         }
@@ -152,7 +160,7 @@ void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
                 GTK_DIALOG_DESTROY_WITH_PARENT,
                 GTK_MESSAGE_WARNING,
                 GTK_BUTTONS_OK,
-                "Linha inválida! Use um número entre 1 e %d", total_linhas);
+                "Linha inválida! Use um número entre 1 e %d", MAXIMO_LINHAS);
             gtk_dialog_run(GTK_DIALOG(dialog));
             gtk_widget_destroy(dialog);
         }
@@ -266,7 +274,107 @@ void configurar_combo_usuarios(AppWidgets *app)
     // Liberar referência do store
     g_object_unref(store);
 }
+void criar_arquivo()
+{
+    FILE *arquivo;
+    int i;
 
+    arquivo = fopen(NOME_ARQUIVO_TXT, "r");
+
+    if (arquivo == NULL)
+    {
+        arquivo = fopen(NOME_ARQUIVO_TXT, "w");
+        if (arquivo == NULL)
+        {
+            printf("Erro ao abrir o arquivo!\n");
+        }
+        for (i = 1; i <= MAXIMO_LINHAS; i++)
+        {
+            fprintf(arquivo, "\n");
+        }
+    }
+    fclose(arquivo);
+}
+
+void escrever_na_linha(int linha_alvo, const char *nova_linha)
+{
+    FILE *arquivo = fopen(NOME_ARQUIVO_TXT, "r");
+    if (!arquivo)
+    {
+        perror("Erro ao abrir o arquivo");
+        return;
+    }
+
+    char linhas[MAXIMO_LINHAS][TAMANHO_LINHA];
+    int i = 0;
+
+    // Lê todas as linhas do arquivo
+    while (fgets(linhas[i], TAMANHO_LINHA, arquivo) != NULL && i < MAXIMO_LINHAS)
+    {
+        i++;
+    }
+    fclose(arquivo);
+
+    // Modifica a linha desejada (se existir)
+    if (linha_alvo >= 0 && linha_alvo < i)
+    {
+        snprintf(linhas[linha_alvo - 1], TAMANHO_LINHA, "%s\n", nova_linha);
+    }
+    else
+    {
+        printf("Linha %d não existe no arquivo.\n", linha_alvo + 1);
+        return;
+    }
+
+    // Reescreve o arquivo
+    arquivo = fopen(NOME_ARQUIVO_TXT, "w");
+    if (!arquivo)
+    {
+        perror("Erro ao reabrir o arquivo");
+        return;
+    }
+    for (int j = 0; j < i; j++)
+    {
+        fputs(linhas[j], arquivo);
+    }
+    fclose(arquivo);
+}
+
+void ler_linha(int numero_linha)
+{
+    FILE *arquivo = fopen(NOME_ARQUIVO_TXT, "r");
+    if (arquivo == NULL)
+    {
+        perror("Erro ao abrir o arquivo");
+        return;
+    }
+
+    char linha[TAMANHO_LINHA];
+    int contador = 1;
+
+    // Lê linha por linha até chegar na linha desejada
+    while (fgets(linha, TAMANHO_LINHA, arquivo) != NULL)
+    {
+        if (contador == numero_linha)
+        {
+            if (strlen(linha) > 0)
+            {
+                printf("Linha:  %s", linha);
+                strcpy(conteudo_linha_selecionada, linha);
+            }
+            else
+            {
+                printf("NADA");
+                return;
+            }
+            fclose(arquivo);
+
+            return;
+        }
+        contador++;
+    }
+    fclose(arquivo);
+}
 int main(int argc, char *argv[])
 {
     // Inicializa MPI
@@ -279,6 +387,11 @@ int main(int argc, char *argv[])
     GtkBuilder *builder;
     AppWidgets *app;
     GError *error = NULL;
+
+    if (my_rank == 0)
+    {
+        criar_arquivo();
+    }
 
     // Inicializar GTK
     gtk_init(&argc, &argv);

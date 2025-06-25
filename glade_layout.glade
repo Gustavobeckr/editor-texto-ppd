@@ -47,8 +47,6 @@
             <property name="height-request">40</property>
             <property name="visible">True</property>
             <property name="can-focus">True</property>
-            <property name="max-length">1</property>
-            <property name="max-width-chars">1</property>
             <property name="primary-icon-name">format-justify-fill</property>
             <property name="primary-icon-tooltip-text" translatable="yes">Escreva o numero da linha que deseja alterar</property>
           </object>
