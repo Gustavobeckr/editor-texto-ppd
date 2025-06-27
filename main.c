@@ -11,10 +11,10 @@
 
 void escrever_na_linha(int linha_alvo, const char *nova_linha);
 void ler_linha(int numero_linha);
+void escutar_mudancas_de_dono(void);
 
 // Estrutura para armazenar os widgets
-typedef struct
-{
+typedef struct {
     GtkWidget *janela_principal;
     GtkWidget *botao_inserir_texto;
     GtkWidget *botao_selecionar_linha;
@@ -27,172 +27,122 @@ typedef struct
     GtkTextBuffer *buffer_logs;
 } AppWidgets;
 
-static int my_rank, num_procs, linha_selecionada;
+static int my_rank, num_procs, linha_selecionada = 0;
+static int dono_linha[MAXIMO_LINHAS] = { -1 };
 static char conteudo_linha_selecionada[TAMANHO_LINHA];
-
-// Array para simular linhas de texto
 static char linhas_texto[MAXIMO_LINHAS][TAMANHO_LINHA];
 
 // Função para adicionar log
-void adicionar_log(AppWidgets *app, const char *mensagem)
-{
+void adicionar_log(AppWidgets *app, const char *mensagem) {
     GtkTextIter iter;
     gtk_text_buffer_get_end_iter(app->buffer_logs, &iter);
-
-    // Adicionar timestamp
     char log_completo[512];
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
-    snprintf(log_completo, sizeof(log_completo),
-             "[%02d:%02d:%02d] %s\n",
-             tm.tm_hour, tm.tm_min, tm.tm_sec, mensagem);
-
+    snprintf(log_completo, sizeof(log_completo), "[%02d:%02d:%02d] %s\n", tm.tm_hour, tm.tm_min, tm.tm_sec, mensagem);
     gtk_text_buffer_insert(app->buffer_logs, &iter, log_completo, -1);
-
-    // Auto-scroll para o final
     GtkTextMark *mark = gtk_text_buffer_get_insert(app->buffer_logs);
     gtk_text_view_scroll_mark_onscreen(app->textarea_logs, mark);
 }
 
-// Função para obter o texto selecionado do combo box
-gchar *obter_usuario_selecionado(GtkComboBox *combo)
-{
+gchar *obter_usuario_selecionado(GtkComboBox *combo) {
     GtkTreeIter iter;
     GtkTreeModel *model;
     gchar *usuario = NULL;
-
-    if (gtk_combo_box_get_active_iter(combo, &iter))
-    {
+    if (gtk_combo_box_get_active_iter(combo, &iter)) {
         model = gtk_combo_box_get_model(combo);
-        if (model)
-        {
-            gtk_tree_model_get(model, &iter, 0, &usuario, -1);
-        }
+        gtk_tree_model_get(model, &iter, 0, &usuario, -1);
     }
-
     return usuario;
 }
 
-// Callback para o botão "Inserir Texto"
-void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data)
-{
+// Callback Inserir Texto
+void on_botao_inserir_texto_clicked(GtkButton *button, gpointer user_data) {
     AppWidgets *app = (AppWidgets *)user_data;
-
+    escutar_mudancas_de_dono();
     const char *conteudo = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha));
-
-    if (strlen(conteudo) > 0)
-    {
-        if (linha_selecionada >= 1 && linha_selecionada <= MAXIMO_LINHAS) {
-          strcpy(linhas_texto[linha_selecionada - 1], conteudo);
-        }
-        escrever_na_linha(linha_selecionada, conteudo);
-
-        char log_msg[300];
-        snprintf(log_msg, sizeof(log_msg),
-                 "Texto inserido na linha %d: '%s'", linha_selecionada, conteudo);
-        adicionar_log(app, log_msg);
-
-        // Limpar o campo de entrada
-        gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), "");
-
-        // Mostrar mensagem de sucesso
-        GtkWidget *dialog = gtk_message_dialog_new(
-            GTK_WINDOW(app->janela_principal),
-            GTK_DIALOG_DESTROY_WITH_PARENT,
-            GTK_MESSAGE_INFO,
-            GTK_BUTTONS_OK,
-            "Texto inserido com sucesso na linha %d!", linha_selecionada);
-        gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
+    if (linha_selecionada < 1 || linha_selecionada > MAXIMO_LINHAS || strlen(conteudo) == 0) return;
+    int idx = linha_selecionada - 1;
+    if (dono_linha[idx] != my_rank && dono_linha[idx] != -1) {
+        char aviso[300];
+        snprintf(aviso, sizeof(aviso), "Linha %d em uso por processo %d.", linha_selecionada, dono_linha[idx]);
+        adicionar_log(app, aviso);
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->janela_principal), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_WARNING, GTK_BUTTONS_OK, "%s", aviso);
+        gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
+        return;
     }
-    else
-    {
-        adicionar_log(app, "Erro: Conteúdo vazio não pode ser inserido");
-
-        GtkWidget *dialog = gtk_message_dialog_new(
-            GTK_WINDOW(app->janela_principal),
-            GTK_DIALOG_DESTROY_WITH_PARENT,
-            GTK_MESSAGE_WARNING,
-            GTK_BUTTONS_OK,
-            "Por favor, insira algum conteúdo!");
-        gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
-    }
+    // Escreve no arquivo e comunica
+    strcpy(linhas_texto[idx], conteudo);
+    escrever_na_linha(linha_selecionada, conteudo);
+    // Notifica lock para salvar
+    int dados[2] = { idx, my_rank };
+    for (int i = 0; i < num_procs; i++) if (i != my_rank) MPI_Send(dados, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
+    char log_msg[300];
+    snprintf(log_msg, sizeof(log_msg), "Texto salvo na linha %d: '%s'", linha_selecionada, conteudo);
+    adicionar_log(app, log_msg);
+    gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), "");
+    // Após salvar, libera a linha
+    dono_linha[idx] = -1;
+    int dados_release[2] = { idx, -1 };
+    for (int i = 0; i < num_procs; i++) if (i != my_rank) MPI_Send(dados_release, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
 }
 
-// Callback para o botão "Selecionar Linha"
-void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data)
-{
+// Callback Selecionar Linha
+void on_botao_selecionar_linha_clicked(GtkButton *button, gpointer user_data) {
     AppWidgets *app = (AppWidgets *)user_data;
-
+    escutar_mudancas_de_dono();
     const char *linha_str = gtk_entry_get_text(GTK_ENTRY(app->input_linha_selecionada));
-
-    if (strlen(linha_str) > 0)
-    {
-        int linha_num = atoi(linha_str);
-
-        if (linha_num > 0 && linha_num <= MAXIMO_LINHAS)
-        {
-            // Mostrar o conteúdo da linha selecionada
-          ler_linha(linha_num);
-          gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), conteudo_linha_selecionada);
-          linha_selecionada = linha_num;
-
-
-            char log_msg[300];
-            snprintf(log_msg, sizeof(log_msg),
-                     "Linha %d selecionada: '%s'", linha_num, linhas_texto[linha_num - 1]);
-            adicionar_log(app, log_msg);
-
-            ler_linha(linha_num);
-
-            GtkWidget *dialog = gtk_message_dialog_new(
-                GTK_WINDOW(app->janela_principal),
-                GTK_DIALOG_DESTROY_WITH_PARENT,
-                GTK_MESSAGE_INFO,
-                GTK_BUTTONS_OK,
-                "Linha %d carregada para edição:\n'%s'",
-                linha_num, conteudo_linha_selecionada);
-            gtk_dialog_run(GTK_DIALOG(dialog));
-            gtk_widget_destroy(dialog);
-        }
-        else
-        {
-            adicionar_log(app, "Erro: Número de linha inválido");
-
-            GtkWidget *dialog = gtk_message_dialog_new(
-                GTK_WINDOW(app->janela_principal),
-                GTK_DIALOG_DESTROY_WITH_PARENT,
-                GTK_MESSAGE_WARNING,
-                GTK_BUTTONS_OK,
-                "Linha inválida! Use um número entre 1 e %d", MAXIMO_LINHAS);
-            gtk_dialog_run(GTK_DIALOG(dialog));
-            gtk_widget_destroy(dialog);
+    if (!linha_str || strlen(linha_str) == 0) return;
+    int nova_linha = atoi(linha_str);
+    if (nova_linha < 1 || nova_linha > MAXIMO_LINHAS) return;
+    int idx = nova_linha - 1;
+    if (dono_linha[idx] != -1 && dono_linha[idx] != my_rank) {
+        char aviso[256];
+        snprintf(aviso, sizeof(aviso), "Linha %d em uso por processo %d.", nova_linha, dono_linha[idx]);
+        adicionar_log(app, aviso);
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->janela_principal), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_WARNING, GTK_BUTTONS_OK, "%s", aviso);
+        gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
+        return;
+    }
+    //Libera seleção anterior caso não tenha editado
+    if (linha_selecionada > 0 && linha_selecionada != nova_linha) {
+        int old_idx = linha_selecionada - 1;
+        if (dono_linha[old_idx] == my_rank && strlen(linhas_texto[old_idx]) == 0) {
+            dono_linha[old_idx] = -1;
+            int dados_release[2] = { old_idx, -1 };
+            for (int i = 0; i < num_procs; i++) if (i != my_rank) MPI_Send(dados_release, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
         }
     }
-    else
-    {
-        adicionar_log(app, "Erro: Número da linha não informado");
-
-        GtkWidget *dialog = gtk_message_dialog_new(
-            GTK_WINDOW(app->janela_principal),
-            GTK_DIALOG_DESTROY_WITH_PARENT,
-            GTK_MESSAGE_WARNING,
-            GTK_BUTTONS_OK,
-            "Por favor, informe o número da linha!");
-        gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
-    }
+    linha_selecionada = nova_linha;
+    dono_linha[idx] = my_rank;
+    int dados_lock[2] = { idx, my_rank };
+    for (int i = 0; i < num_procs; i++) if (i != my_rank) MPI_Send(dados_lock, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
+    ler_linha(nova_linha);
+    gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha), conteudo_linha_selecionada);
+    gtk_editable_set_editable(GTK_EDITABLE(app->input_conteudo_linha), TRUE);
+    char msg[256]; snprintf(msg, sizeof(msg), "Linha %d pronta para edição", nova_linha);
+    adicionar_log(app, msg);
 }
 
-// Callback para o botão "Enviar Chat"
+// Drena todas as mensagens pendentes de lock
+void escutar_mudancas_de_dono() {
+    MPI_Status status; int dados[2], flag;
+    do {
+        MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, &status);
+        if (flag) {
+            MPI_Recv(dados, 2, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            int linha = dados[0], novo_dono = dados[1];
+            dono_linha[linha] = novo_dono;
+        }
+    } while (flag);
+}
+
 void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
 {
     AppWidgets *app = (AppWidgets *)user_data;
 
     const char *mensagem_chat = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha1));
 
-    // Obter usuário selecionado no combo
     gchar *usuario_ativo = obter_usuario_selecionado(GTK_COMBO_BOX(app->combo_usuario_chat));
 
     if (strlen(mensagem_chat) > 0)
@@ -210,7 +160,6 @@ void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
         }
         adicionar_log(app, log_msg);
 
-        // Limpar o campo de mensagem
         gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha1), "");
 
         GtkWidget *dialog = gtk_message_dialog_new(
@@ -242,16 +191,13 @@ void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
     }
 }
 
-// Callback para fechar a aplicação
 void on_janela_principal_destroy(GtkWidget *widget, gpointer user_data)
 {
     gtk_main_quit();
 }
 
-// Função para configurar o combo box de usuários
 void configurar_combo_usuarios(AppWidgets *app)
 {
-    // Criar um ListStore para o combo box
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
     GtkTreeIter iter;
 
@@ -366,7 +312,7 @@ void ler_linha(int numero_linha)
             {
                 strcpy(conteudo_linha_selecionada, linha);
                 conteudo_linha_selecionada[strcspn(conteudo_linha_selecionada, "\n")] = '\0';  // remove o \n
-
+                strcpy(linhas_texto[numero_linha-1], conteudo_linha_selecionada);
             }
             else
             {
@@ -397,7 +343,10 @@ int main(int argc, char *argv[])
     if (my_rank == 0)
     {
         criar_arquivo();
+        for (int i = 0; i < MAXIMO_LINHAS; i++)
+            dono_linha[i] = -1;
     }
+    MPI_Bcast(dono_linha, MAXIMO_LINHAS, MPI_INT, 0, MPI_COMM_WORLD);
 
     // Inicializar GTK
     gtk_init(&argc, &argv);
