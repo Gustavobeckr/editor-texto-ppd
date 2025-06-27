@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include <mpi.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -31,6 +32,28 @@ static int my_rank, num_procs, linha_selecionada = 0;
 static int dono_linha[MAXIMO_LINHAS] = { -1 };
 static char conteudo_linha_selecionada[TAMANHO_LINHA];
 static char linhas_texto[MAXIMO_LINHAS][TAMANHO_LINHA];
+
+void* escutar_chat_em_background(void* arg) {
+    AppWidgets *app = (AppWidgets*) arg;
+    char mensagem_recebida[128];
+    MPI_Status status;
+
+    while (1) {
+        MPI_Recv(&mensagem_recebida, 128, MPI_CHAR, MPI_ANY_SOURCE, 99, MPI_COMM_WORLD, &status);
+
+        GtkTextIter start, end;
+gtk_text_buffer_get_start_iter(app->buffer_logs, &start);
+gtk_text_buffer_get_end_iter(app->buffer_logs, &end);
+gchar *texto_antigo = gtk_text_buffer_get_text(app->buffer_logs, &start, &end, FALSE);
+
+        gchar *novo_texto = g_strdup_printf("%s\n[Recebido] %s", texto_antigo, mensagem_recebida);
+        gtk_text_buffer_set_text(app->buffer_logs, novo_texto, -1);
+        g_free(texto_antigo);
+        g_free(novo_texto);
+    }
+
+    return NULL;
+}
 
 // Função para adicionar log
 void adicionar_log(AppWidgets *app, const char *mensagem) {
@@ -139,56 +162,62 @@ void escutar_mudancas_de_dono() {
 
 void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
 {
-    AppWidgets *app = (AppWidgets *)user_data;
+    /* 1. Resgata o ponteiro para sua struct de widgets */
+    AppWidgets *app = (AppWidgets *) user_data;
 
-    const char *mensagem_chat = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha1));
+    /* 2. Lê o texto do entry */
+    const char *texto = gtk_entry_get_text(GTK_ENTRY(app->input_conteudo_linha1));
 
-    gchar *usuario_ativo = obter_usuario_selecionado(GTK_COMBO_BOX(app->combo_usuario_chat));
-
-    if (strlen(mensagem_chat) > 0)
-    {
-        char log_msg[400];
-        if (usuario_ativo && strlen(usuario_ativo) > 0)
-        {
-            snprintf(log_msg, sizeof(log_msg),
-                     "Chat enviado por %s: '%s'", usuario_ativo, mensagem_chat);
-        }
-        else
-        {
-            snprintf(log_msg, sizeof(log_msg),
-                     "Chat enviado: '%s'", mensagem_chat);
-        }
-        adicionar_log(app, log_msg);
-
-        gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha1), "");
-
-        GtkWidget *dialog = gtk_message_dialog_new(
-            GTK_WINDOW(app->janela_principal),
-            GTK_DIALOG_DESTROY_WITH_PARENT,
-            GTK_MESSAGE_INFO,
-            GTK_BUTTONS_OK,
-            "Mensagem de chat enviada com sucesso!");
-        gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
-    }
-    else
-    {
+    /* 3. Se estiver vazio, mostra alerta e retorna */
+    if (strlen(texto) == 0) {
         adicionar_log(app, "Erro: Mensagem de chat vazia");
-
-        GtkWidget *dialog = gtk_message_dialog_new(
+        GtkWidget *dlg = gtk_message_dialog_new(
             GTK_WINDOW(app->janela_principal),
             GTK_DIALOG_DESTROY_WITH_PARENT,
             GTK_MESSAGE_WARNING,
             GTK_BUTTONS_OK,
             "Por favor, digite uma mensagem!");
-        gtk_dialog_run(GTK_DIALOG(dialog));
-        gtk_widget_destroy(dialog);
+        gtk_dialog_run(GTK_DIALOG(dlg));
+        gtk_widget_destroy(dlg);
+        return;
     }
 
-    if (usuario_ativo)
-    {
-        g_free(usuario_ativo);
+    /* 4. Monta o buffer de envio, incluindo nome de usuário se houver */
+    char mensagem_chat[128];
+    gchar *usuario = obter_usuario_selecionado(GTK_COMBO_BOX(app->combo_usuario_chat));
+    if (usuario && strlen(usuario) > 0) {
+        snprintf(mensagem_chat, sizeof(mensagem_chat), "[%s] %s", usuario, texto);
+        g_free(usuario);
+    } else {
+        snprintf(mensagem_chat, sizeof(mensagem_chat), "%s", texto);
     }
+
+    /* 5. Log local e limpa o campo */
+    adicionar_log(app, mensagem_chat);
+    gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha1), "");
+
+    /* 6. Envia via MPI para todos os outros processos com tag 99 */
+    for (int dest = 0; dest < num_procs; ++dest) {
+        if (dest == my_rank) continue;
+        MPI_Send(
+            mensagem_chat,
+            (int)strlen(mensagem_chat) + 1,  /* inclui o terminador '\0' */
+            MPI_CHAR,
+            dest,
+            99,
+            MPI_COMM_WORLD
+        );
+    }
+
+    /* 7. Confirmação final ao usuário */
+    GtkWidget *dlg = gtk_message_dialog_new(
+        GTK_WINDOW(app->janela_principal),
+        GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_INFO,
+        GTK_BUTTONS_OK,
+        "Mensagem de chat enviada com sucesso!");
+    gtk_dialog_run(GTK_DIALOG(dlg));
+    gtk_widget_destroy(dlg);
 }
 
 void on_janela_principal_destroy(GtkWidget *widget, gpointer user_data)
@@ -246,6 +275,25 @@ void criar_arquivo()
     }
     fclose(arquivo);
 }
+
+// void escutar_mudancas_de_dono()
+// {
+//     MPI_Status status;
+//     int dados_recebidos[2];
+
+//     int flag = 0;
+//     MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &flag, &status);
+//     if (flag)
+//     {
+//         MPI_Recv(dados_recebidos, 2, MPI_INT, status.MPI_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//         int linha = dados_recebidos[0];
+//         int novo_dono = dados_recebidos[1];
+//         dono_linha[linha] = novo_dono;
+
+//         // Opcional: log
+//         printf("[Processo %d] Linha %d agora pertence ao processo %d\n", my_rank, linha + 1, novo_dono);
+//     }
+// }
 
 void escrever_na_linha(int linha_alvo, const char *nova_linha)
 {
@@ -329,57 +377,58 @@ void ler_linha(int numero_linha)
 }
 int main(int argc, char *argv[])
 {
-    // Inicializa MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
     char titulo_janela_principal[100];
-    snprintf(titulo_janela_principal, sizeof(titulo_janela_principal), "Editor de Texto PPD - Processo %d", my_rank);
+    snprintf(titulo_janela_principal, sizeof(titulo_janela_principal),
+             "Editor de Texto PPD - Processo %d", my_rank);
 
-    GtkBuilder *builder;
-    AppWidgets *app;
-    GError *error = NULL;
-
-    if (my_rank == 0)
-    {
+    // 2) Thread-0 prepara arquivo e donos
+    if (my_rank == 0) {
         criar_arquivo();
         for (int i = 0; i < MAXIMO_LINHAS; i++)
             dono_linha[i] = -1;
     }
     MPI_Bcast(dono_linha, MAXIMO_LINHAS, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Inicializar GTK
+    // 3) Inicializa GTK e aloca AppWidgets
     gtk_init(&argc, &argv);
+    AppWidgets *app = g_malloc(sizeof(AppWidgets));
 
-    // Alocar memória para a estrutura de widgets
-    app = g_malloc(sizeof(AppWidgets));
-
-    // Criar builder e carregar o arquivo .glade
-    builder = gtk_builder_new();
-    if (!gtk_builder_add_from_file(builder, "glade_layout.glade", &error))
-    {
-        g_printerr("Erro ao carregar arquivo .glade: %s\n", error->message);
+    // 4) Carrega o .glade e obtém cada widget
+    GtkBuilder *builder = gtk_builder_new();
+    GError *error = NULL;
+    if (!gtk_builder_add_from_file(builder, "glade_layout.glade", &error)) {
+        g_printerr("Erro ao carregar .glade: %s\n", error->message);
         g_error_free(error);
         return 1;
     }
-
-    // Obter widgets do builder
-    app->janela_principal = GTK_WIDGET(gtk_builder_get_object(builder, "janela_principal"));
-    app->botao_inserir_texto = GTK_WIDGET(gtk_builder_get_object(builder, "botao_inserir_texto"));
-    app->botao_selecionar_linha = GTK_WIDGET(gtk_builder_get_object(builder, "botao_selecionar_linha"));
-    app->input_linha_selecionada = GTK_WIDGET(gtk_builder_get_object(builder, "input_linha_selecionada"));
-    app->input_conteudo_linha = GTK_WIDGET(gtk_builder_get_object(builder, "input_conteudo_linha"));
-    app->botao_enviar_chat = GTK_WIDGET(gtk_builder_get_object(builder, "botao_enviar_chat"));
-    app->combo_usuario_chat = GTK_WIDGET(gtk_builder_get_object(builder, "combo_usuario_chat"));
+    app->janela_principal      = GTK_WIDGET(gtk_builder_get_object(builder, "janela_principal"));
+    app->botao_inserir_texto   = GTK_WIDGET(gtk_builder_get_object(builder, "botao_inserir_texto"));
+    app->botao_selecionar_linha= GTK_WIDGET(gtk_builder_get_object(builder, "botao_selecionar_linha"));
+    app->input_linha_selecionada= GTK_WIDGET(gtk_builder_get_object(builder, "input_linha_selecionada"));
+    app->input_conteudo_linha  = GTK_WIDGET(gtk_builder_get_object(builder, "input_conteudo_linha"));
+    app->botao_enviar_chat     = GTK_WIDGET(gtk_builder_get_object(builder, "botao_enviar_chat"));
+    app->combo_usuario_chat    = GTK_WIDGET(gtk_builder_get_object(builder, "combo_usuario_chat"));
     app->input_conteudo_linha1 = GTK_WIDGET(gtk_builder_get_object(builder, "input_conteudo_linha1"));
-    app->textarea_logs = GTK_TEXT_VIEW(gtk_builder_get_object(builder, "textarea_logs"));
+    app->textarea_logs         = GTK_TEXT_VIEW(gtk_builder_get_object(builder, "textarea_logs"));
 
-    gtk_window_set_title(GTK_WINDOW(app->janela_principal), titulo_janela_principal);
+    gtk_window_set_title(GTK_WINDOW(app->janela_principal),
+                         titulo_janela_principal);
 
-    // Configurar o buffer de texto para logs
+    // 5) Configura o buffer de logs ANTES de criar a thread
     app->buffer_logs = gtk_text_view_get_buffer(app->textarea_logs);
 
-    // Conectar sinais aos callbacks
+    // 6) Agora sim, lança a thread de recepção de chat
+    pthread_t thread_chat;
+    pthread_create(&thread_chat,
+                   NULL,
+                   escutar_chat_em_background,
+                   app);
+
+    // 7) Conecta sinais e prepara restante da UI
     g_signal_connect(app->janela_principal, "destroy",
                      G_CALLBACK(on_janela_principal_destroy), NULL);
     g_signal_connect(app->botao_inserir_texto, "clicked",
@@ -389,26 +438,15 @@ int main(int argc, char *argv[])
     g_signal_connect(app->botao_enviar_chat, "clicked",
                      G_CALLBACK(on_botao_enviar_chat_clicked), app);
 
-    // Configurar combo box de usuários
     configurar_combo_usuarios(app);
-
-    // Adicionar log inicial
     adicionar_log(app, "Editor inicializado com sucesso");
 
-    // Liberar o builder
     g_object_unref(builder);
-
-    // Mostrar a janela principal
     gtk_widget_show_all(app->janela_principal);
-
-    // Iniciar o loop principal do GTK
     gtk_main();
 
-    // Liberar memória
+    // 8) Cleanup
     g_free(app);
-
-    // Finaliza MPI
     MPI_Finalize();
-
     return 0;
 }
