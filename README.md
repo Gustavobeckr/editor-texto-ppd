@@ -42,9 +42,9 @@ sudo apt-get install build-essential libgtk-3-dev pkg-config glade
 ### Build & Run
 
 ```bash
-make clean    # Instalar dependências
-make            # Compilar
-make run        # Executar
+make clean    #limpar
+make          #compilar
+make run      #executar
 ```
 
 ### Modo gerar e medir
