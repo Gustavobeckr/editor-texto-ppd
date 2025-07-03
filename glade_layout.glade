@@ -157,21 +157,6 @@
           </packing>
         </child>
         <child>
-          <object class="GtkTextView" id="textarea_logs">
-            <property name="width-request">560</property>
-            <property name="height-request">150</property>
-            <property name="visible">True</property>
-            <property name="can-focus">True</property>
-            <property name="editable">False</property>
-            <property name="cursor-visible">False</property>
-            <property name="accepts-tab">False</property>
-          </object>
-          <packing>
-            <property name="x">20</property>
-            <property name="y">343</property>
-          </packing>
-        </child>
-        <child>
           <object class="GtkComboBox" id="combo_usuario_chat">
             <property name="width-request">132</property>
             <property name="height-request">40</property>
@@ -181,6 +166,30 @@
           <packing>
             <property name="x">18</property>
             <property name="y">176</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="width-request">550</property>
+            <property name="height-request">140</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="shadow-type">in</property>
+            <child>
+              <object class="GtkTextView" id="textarea_logs">
+                <property name="width-request">100</property>
+                <property name="height-request">80</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="editable">False</property>
+                <property name="cursor-visible">False</property>
+                <property name="accepts-tab">False</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="x">21</property>
+            <property name="y">339</property>
           </packing>
         </child>
       </object>
