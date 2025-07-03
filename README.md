@@ -1,26 +1,49 @@
 # Editor de texto -- PPD
 
-Este projeto consiste no desenvolvimento de um editor de texto colaborativo utilizando C++, com suporte a edição simultânea por múltiplos usuários, inspirado em ferramentas como Google Docs.
+**Universidade:** Universidade de Santa Cruz do Sul  
+**Disciplina:** Programação Paralela e Distribuída 
+**Professor:** Ivan Luis Suptitz  
 
-Bibliotecas utilizadas:
-OpenMP: para execução paralela e otimização de operações locais, como salvamento automático e verificação de alterações.
-MPI: para comunicação entre processos distribuídos, garantindo a sincronização das edições em tempo real entre os usuários.
+Este projeto, desenvolvido como trabalho da disciplina PPD, implementa um **editor de texto colaborativo** em C, integrando **MPI** e **OpenMP** para suportar:
 
-Linguagem de programação utilizada: C++
+- Edição simultânea por múltiplos “usuários” (processos MPI)  
+- Bloqueio de linhas para garantir consistência  
+- Chat ponto-a-ponto entre dois usuários  
+- Logs de todas as operações  
+- Geração massiva de dados de teste em paralelo (OpenMP)  
 
-## Lista de Tarefas
+## Bibliotecas
 
-- ~~O programa deve possibilitar a utilização por múltiplos usuários simultaneamente;~~
-- Deve assegurar que as alterações feitas fiquem imediatamente disponíveis para todos
-os usuários;
-- Deve assegurar a consistência;
-- Deve possibilitar comunicação fechada entre dois usuários;
-- Deve possibilitar gerar automaticamente um grande volume de dados para realizar
-testes de desempenho
+- **Linguagem:** C (GTK3 para GUI)  
+- **OpenMP:** paralelização local (geração de dados de teste, medição de tempo)  
+- **MPI:** comunicação ponto-a-ponto (locks, chat) e coletiva (`MPI_Bcast`, `MPI_Barrier`)  
+- **GTK+ 3:** interface gráfica (Glade)  
+- **pthread:** thread de recepção de chat 
 
-## Para Rodar
+## Funcionalidades
+
+1. **Multi-usuário (MPI)**  
+2. **Consistência (locks de linha)**  
+3. **Chat entre usuários**  
+4. **Geração de dados de teste em paralelo (OpenMP)**  
+5. **Logs de edição na GUI**  
+
+---
+
+## Pré-requisitos
+
+Sistemas operacional: Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libgtk-3-dev pkg-config glade
 ```
 make install # Intalar dependências
 make         # Compilar  
 make run     # Executar
+```
+Modo gerar e medir
+
+```
+mpirun -np 4 ./edito_texto_ppd 1000
 ```
