@@ -4,7 +4,7 @@
 **Disciplina:** Programação Paralela e Distribuída 
 **Professor:** Ivan Luis Suptitz  
 
-Este projeto, desenvolvido como trabalho da disciplina PPD, implementa um **editor de texto colaborativo** em C, integrando **MPI** e **OpenMP** para suportar:
+Este projeto foi desenvolvido como trabalho da disciplina PPD, que implementa um **editor de texto colaborativo** em C, integrando **MPI** e **OpenMP** para suportar:
 
 - Edição simultânea por múltiplos “usuários” (processos MPI)  
 - Bloqueio de linhas para garantir consistência  
