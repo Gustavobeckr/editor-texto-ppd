@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.40.0 -->
+<interface>
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkWindow" id="janela_principal">
+    <property name="can-focus">False</property>
+    <property name="title" translatable="yes">Editor</property>
+    <property name="default-width">444</property>
+    <property name="default-height">250</property>
+    <child>
+      <object class="GtkFixed" id="layout_principal">
+        <property name="width-request">600</property>
+        <property name="height-request">500</property>
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkButton" id="botao_inserir_texto">
+            <property name="label" translatable="yes">Inserir Texto</property>
+            <property name="width-request">120</property>
+            <property name="height-request">40</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+          </object>
+          <packing>
+            <property name="x">471</property>
+            <property name="y">87</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="botao_selecionar_linha">
+            <property name="label" translatable="yes">Selecionar Linha</property>
+            <property name="width-request">142</property>
+            <property name="height-request">40</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+          </object>
+          <packing>
+            <property name="x">196</property>
+            <property name="y">40</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="input_linha_selecionada">
+            <property name="width-request">168</property>
+            <property name="height-request">40</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="primary-icon-name">format-justify-fill</property>
+            <property name="primary-icon-tooltip-text" translatable="yes">Escreva o numero da linha que deseja alterar</property>
+          </object>
+          <packing>
+            <property name="x">20</property>
+            <property name="y">40</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="input_conteudo_linha">
+            <property name="width-request">448</property>
+            <property name="height-request">40</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="primary-icon-name">document-new</property>
+          </object>
+          <packing>
+            <property name="x">20</property>
+            <property name="y">87</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="label_editor_texto">
+            <property name="width-request">318</property>
+            <property name="height-request">30</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Edição de Texto</property>
+          </object>
+          <packing>
+            <property name="x">20</property>
+            <property name="y">6</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="label_chat">
+            <property name="width-request">318</property>
+            <property name="height-request">30</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Mensagem via chat</property>
+          </object>
+          <packing>
+            <property name="x">25</property>
+            <property name="y">147</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="width-request">600</property>
+            <property name="height-request">2</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">center</property>
+          </object>
+          <packing>
+            <property name="y">144</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="botao_enviar_chat">
+            <property name="label" translatable="yes">Enviar Chat</property>
+            <property name="width-request">119</property>
+            <property name="height-request">42</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+          </object>
+          <packing>
+            <property name="x">469</property>
+            <property name="y">231</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="input_conteudo_linha1">
+            <property name="width-request">447</property>
+            <property name="height-request">43</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+          </object>
+          <packing>
+            <property name="x">16</property>
+            <property name="y">231</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="width-request">600</property>
+            <property name="height-request">2</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+          </object>
+          <packing>
+            <property name="y">296</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="label_logs">
+            <property name="width-request">318</property>
+            <property name="height-request">30</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Histórico de Operações</property>
+          </object>
+          <packing>
+            <property name="x">20</property>
+            <property name="y">311</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkComboBox" id="combo_usuario_chat">
+            <property name="width-request">132</property>
+            <property name="height-request">40</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+          </object>
+          <packing>
+            <property name="x">18</property>
+            <property name="y">176</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="width-request">550</property>
+            <property name="height-request">140</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="shadow-type">in</property>
+            <child>
+              <object class="GtkTextView" id="textarea_logs">
+                <property name="width-request">100</property>
+                <property name="height-request">80</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="editable">False</property>
+                <property name="cursor-visible">False</property>
+                <property name="accepts-tab">False</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="x">21</property>
+            <property name="y">339</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
