@@ -11,7 +11,7 @@ CC = mpicc
 
 # Flags do compilador para GTK
 CFLAGS = `pkg-config --cflags gtk+-3.0` -Wall -pthread
-LIBS = `pkg-config --libs gtk+-3.0` -pthread
+LIBS = `pkg-config --libs gtk+-3.0` -pthread -fopenmp
 
 # Regra principal
 $(TARGET): $(SRC)
