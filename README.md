@@ -38,14 +38,17 @@ Este projeto foi desenvolvido como trabalho da disciplina PPD, que implementa um
 sudo apt-get update
 sudo apt-get install build-essential libgtk-3-dev pkg-config glade
 ```
-Build & Run
 
-make install    # Instalar dependências
+### Build & Run
+
+```bash
+make clean    # Instalar dependências
 make            # Compilar
 make run        # Executar
-
-Modo gerar e medir
-
 ```
+
+### Modo gerar e medir
+
+```bash
 mpirun -np 4 ./edito_texto_ppd 1000
 ```
