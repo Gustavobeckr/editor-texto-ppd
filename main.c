@@ -33,15 +33,15 @@ static int my_rank, num_procs, linha_selecionada = 0;
 static int dono_linha[MAXIMO_LINHAS] = { -1 };
 static char conteudo_linha_selecionada[TAMANHO_LINHA];
 static char linhas_texto[MAXIMO_LINHAS][TAMANHO_LINHA];
+static int rank_alvo_comunicacao = 0; 
 
 void* escutar_chat_em_background(void* arg) {
     AppWidgets *app = (AppWidgets*) arg;
     char mensagem_recebida[128];
     MPI_Status status;
 
-    while (1) {
-        MPI_Recv(&mensagem_recebida, 128, MPI_CHAR, MPI_ANY_SOURCE, 99, MPI_COMM_WORLD, &status);
-
+    while (1) {    
+        MPI_Recv(&mensagem_recebida, 128, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
         GtkTextIter start, end;
         gtk_text_buffer_get_start_iter(app->buffer_logs, &start);
         gtk_text_buffer_get_end_iter(app->buffer_logs, &end);
@@ -50,7 +50,7 @@ void* escutar_chat_em_background(void* arg) {
         gchar *novo_texto = g_strdup_printf("%s\n[Recebido] %s", texto_antigo, mensagem_recebida);
         gtk_text_buffer_set_text(app->buffer_logs, novo_texto, -1);
         g_free(texto_antigo);
-        g_free(novo_texto);
+        g_free(novo_texto);   
     }
 
     return NULL;
@@ -73,6 +73,9 @@ gchar *obter_usuario_selecionado(GtkComboBox *combo) {
     GtkTreeIter iter;
     GtkTreeModel *model;
     gchar *usuario = NULL;
+
+    rank_alvo_comunicacao = gtk_combo_box_get_active(combo);
+
     if (gtk_combo_box_get_active_iter(combo, &iter)) {
         model = gtk_combo_box_get_model(combo);
         gtk_tree_model_get(model, &iter, 0, &usuario, -1);
@@ -191,18 +194,15 @@ void on_botao_enviar_chat_clicked(GtkButton *button, gpointer user_data)
 
     adicionar_log(app, mensagem_chat);
     gtk_entry_set_text(GTK_ENTRY(app->input_conteudo_linha1), "");
-    for (int dest = 0; dest < num_procs; ++dest) {
-        if (dest == my_rank) continue;
         MPI_Send(
             mensagem_chat,
             (int)strlen(mensagem_chat) + 1,
             MPI_CHAR,
-            dest,
+            rank_alvo_comunicacao,
             99,
             MPI_COMM_WORLD
         );
-    }
-
+    
     GtkWidget *dlg = gtk_message_dialog_new(
         GTK_WINDOW(app->janela_principal),
         GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -222,14 +222,16 @@ void configurar_combo_usuarios(AppWidgets *app)
 {
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
     GtkTreeIter iter;
+    char nomeCombo[150];
+    char strUsuario[100] = "Processo ";
 
-    const char *usuarios[] = {"Usuario1", "Usuario2", "Usuario3", "Admin", "Convidado"};
-    int num_usuarios = sizeof(usuarios) / sizeof(usuarios[0]);
-
-    for (int i = 0; i < num_usuarios; i++)
+    for (int i = 0; i < num_procs ; i++)
     {
+        sprintf(nomeCombo, "%s%d", strUsuario, i);
         gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, usuarios[i], -1);
+        gtk_list_store_set(store, &iter, 0, nomeCombo, -1);
+
+
     }
 
     gtk_combo_box_set_model(GTK_COMBO_BOX(app->combo_usuario_chat), GTK_TREE_MODEL(store));

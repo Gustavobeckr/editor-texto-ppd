@@ -34,7 +34,7 @@ clean:
 
 # Regra para executar com 1 processo (programa GTK simples)
 run: $(TARGET)
-	mpirun -np 2 ./$(TARGET)
+	mpirun -np 3 ./$(TARGET)
 
 
 # Regra para executar apenas localmente sem mpirun
