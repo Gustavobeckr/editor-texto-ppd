@@ -32,16 +32,18 @@ Este projeto foi desenvolvido como trabalho da disciplina PPD, que implementa um
 
 ## Pré-requisitos
 
-Sistemas operacional: Ubuntu:
+### Em Ubuntu/Debian
 
 ```bash
 sudo apt-get update
 sudo apt-get install build-essential libgtk-3-dev pkg-config glade
 ```
-make install # Intalar dependências
-make         # Compilar  
-make run     # Executar
-```
+Build & Run
+
+make install    # Instalar dependências
+make            # Compilar
+make run        # Executar
+
 Modo gerar e medir
 
 ```
